@@ -154,3 +154,67 @@ def popup_note(html: str, category: int) -> FavoriteState:
     if selected is not None and str(selected.get("value")) != str(category):
         raise ParseError("Gallery detail and favorite popup disagree; reload before modifying.")
     return FavoriteState(category, textarea.get_text())
+
+
+def settings_form(html: str) -> dict:
+    """Serialize the settings form's successful controls, excluding profile actions."""
+    soup = document(html)
+    expected = {f"favorite_{index}" for index in range(10)}
+    candidates = [
+        form
+        for form in soup.find_all("form")
+        if expected.issubset({node.get("name") for node in form.find_all("input")})
+    ]
+    if len(candidates) != 1:
+        raise ParseError("Could not identify the favorite category settings form.")
+    form = candidates[0]
+    if form.get("method", "get").lower() != "post":
+        raise ParseError("Unexpected settings submission method.")
+    action = urlsplit(form.get("action", ""))
+    if action.netloc or action.scheme or action.path not in ("", "/uconfig.php"):
+        raise ParseError("Unexpected settings submission destination.")
+    fields = []
+    for node in form.find_all(["input", "select", "textarea"]):
+        name = node.get("name")
+        if not name or node.has_attr("disabled") or node.find_parent("fieldset", disabled=True):
+            continue
+        if node.name == "input":
+            kind = node.get("type", "text").lower()
+            if kind in ("submit", "reset", "button", "image", "file"):
+                continue
+            if kind in ("radio", "checkbox") and not node.has_attr("checked"):
+                continue
+            fields.append((name, node.get("value", "on" if kind in ("radio", "checkbox") else "")))
+        elif node.name == "textarea":
+            fields.append((name, node.get_text()))
+        else:
+            options = [
+                option for option in node.find_all("option") if not option.has_attr("disabled")
+            ]
+            selected = [option for option in options if option.has_attr("selected")]
+            if not selected and not node.has_attr("multiple"):
+                selected = options[:1]
+            for option in selected:
+                fields.append((name, option.get("value", option.get_text())))
+    submits = form.select('input[type="submit"][name], button[type="submit"][name]')
+    if not submits:
+        # The live page renders its Apply control outside the settings form.
+        submits = soup.select('input[type="submit"][name="apply"]')
+    if len(submits) > 1:
+        raise ParseError("Ambiguous settings submit controls; refusing to guess.")
+    if submits:
+        fields.append((submits[0]["name"], submits[0].get("value", "")))
+    names = []
+    for index in range(10):
+        matches = [value for key, value in fields if key == f"favorite_{index}"]
+        if len(matches) != 1:
+            raise ParseError("Missing or duplicated favorite name field.")
+        names.append(matches[0])
+    profile_select = soup.select_one('#profile_form select[name="profile_set"]')
+    profile = "default"
+    if profile_select is not None:
+        option = profile_select.select_one("option[selected]") or profile_select.find("option")
+        if option is None or option.get("value") is None:
+            raise ParseError("Cannot determine the settings profile.")
+        profile = option["value"]
+    return {"fields": fields, "profile": profile, "names": names}

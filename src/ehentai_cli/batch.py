@@ -107,6 +107,14 @@ def validate_plan(
 def apply_plan(
     client: Client, plan: dict, *, journal: Path | None = None, rollback: bool = False
 ) -> dict:
+    if isinstance(plan, dict) and plan.get("operation") == "rename":
+        from .categories import apply_rename_plan
+
+        return apply_rename_plan(client, plan, journal=journal, rollback=rollback)
+    if isinstance(plan, dict) and plan.get("operation") == "native_move":
+        from .native import apply_native_plan
+
+        return apply_native_plan(client, plan, journal=journal, rollback=rollback)
     operations = validate_plan(plan, client)
     if rollback:
         operations = [(ref, after, before) for ref, before, after in reversed(operations)]

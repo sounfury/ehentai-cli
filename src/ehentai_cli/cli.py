@@ -21,9 +21,11 @@ from .auth import (
     save_credentials,
 )
 from .batch import apply_plan, make_plan
+from .categories import make_rename_plan
 from .client import Client
 from .errors import CLIError, InputError
 from .models import GalleryRef, category_index
+from .native import batch_size_value, make_native_plan
 from .transport import Transport
 
 
@@ -143,6 +145,13 @@ def build_parser() -> argparse.ArgumentParser:
         )
         _common(action)
         _selection(action)
+        if name == "move":
+            action.add_argument(
+                "--native",
+                action="store_true",
+                help="Move up to 50 IDs per site form submission; preserve notes",
+            )
+            action.add_argument("--batch-size", type=batch_size_value, default=50)
         action.add_argument(
             "--dry-run",
             action="store_true",
@@ -153,12 +162,37 @@ def build_parser() -> argparse.ArgumentParser:
             type=Path,
             help="Save a result journal here instead of in the user config directory",
         )
+    for name in ("merge", "rename"):
+        action = actions.add_parser(
+            name,
+            help="Merge source favorites into another category using native batches"
+            if name == "merge"
+            else "Rename a favorite category while preserving other settings",
+        )
+        _common(action)
+        if name == "merge":
+            action.add_argument("--from-category", required=True, type=category_index)
+            action.add_argument(
+                "--into-category", "--to-category", required=True, type=category_index
+            )
+            action.add_argument("--batch-size", type=batch_size_value, default=50)
+        else:
+            action.add_argument("--category", required=True, type=category_index)
+            action.add_argument("--name", required=True)
+        action.add_argument("--dry-run", action="store_true")
+        action.add_argument("--out", type=Path, help="Destination for the result journal")
     plan = actions.add_parser(
         "plan", help="Save a snapshot-based batch plan without changing favorites"
     )
     _common(plan)
     plan.add_argument("operation", choices=("add", "move", "note", "remove"))
     _selection(plan)
+    plan.add_argument(
+        "--native",
+        action="store_true",
+        help="Use a native category-only move plan (move operation only)",
+    )
+    plan.add_argument("--batch-size", type=batch_size_value, default=50)
     plan.add_argument("--out", type=Path, help="Destination for the plan")
     for name in ("apply", "rollback"):
         action = actions.add_parser(
@@ -264,9 +298,28 @@ def execute(args: argparse.Namespace) -> tuple[dict, int]:
             plan = read_json(args.plan)
             plan_path = args.plan
         else:
-            values = _values(args)
-            operation = args.operation if args.action == "plan" else args.action
-            plan = make_plan(client, operation, values, category=args.category, note=args.note)
+            if args.action == "rename":
+                plan = make_rename_plan(client, args.category, args.name)
+            elif args.action == "merge":
+                plan = make_native_plan(
+                    client,
+                    category=args.into_category,
+                    source=args.from_category,
+                    batch_size=args.batch_size,
+                )
+            else:
+                values = _values(args)
+                operation = args.operation if args.action == "plan" else args.action
+                if getattr(args, "native", False):
+                    if operation != "move" or args.note is not None:
+                        raise InputError("--native supports category-only move; omit note changes.")
+                    plan = make_native_plan(
+                        client, values, category=args.category, batch_size=args.batch_size
+                    )
+                else:
+                    plan = make_plan(
+                        client, operation, values, category=args.category, note=args.note
+                    )
             plan_path = args.out if args.action == "plan" and args.out else run_dir / "plan.json"
             private_write(plan_path, plan)
             if args.action == "plan" or args.dry_run:

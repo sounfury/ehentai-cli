@@ -60,7 +60,12 @@ class Transport:
         self.session.close()
 
     def request(
-        self, method: str, path: str, *, params: dict | None = None, data: dict | None = None
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict | None = None,
+        data: dict | list[tuple[str, str]] | None = None,
     ) -> str:
         # No arbitrary URL may receive the user's cookies, including through redirects.
         if not path.startswith("/") or path.startswith("//") or ":" in path or "\\" in path:

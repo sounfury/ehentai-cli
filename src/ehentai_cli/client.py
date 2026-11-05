@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 from .errors import CLIError, ConflictError, InputError, UnknownResultError
-from .models import FavoriteState, GalleryRef
-from .parsing import categories_from, detail_category, document, favorites_page, popup_note
+from .models import FavoriteState, GalleryRef, category_index
+from .parsing import (
+    categories_from,
+    detail_category,
+    document,
+    favorites_page,
+    popup_note,
+    settings_form,
+)
 from .transport import Transport
 
 
@@ -62,6 +69,32 @@ class Client:
         raise ConflictError(
             "Reached max-pages before the end. Increase --max-pages or narrow the query."
         )
+
+    def settings(self) -> dict:
+        return settings_form(self.transport.request("GET", "/uconfig.php"))
+
+    def submit_settings(self, fields: list[tuple[str, str]]) -> None:
+        self.transport.request("POST", "/uconfig.php", data=fields)
+
+    def move_many(self, refs: list[GalleryRef], category: int) -> None:
+        category = category_index(category)
+        if not refs or len(refs) > 50 or len({ref.gid for ref in refs}) != len(refs):
+            raise InputError("A native batch must contain 1 to 50 distinct galleries.")
+        data = [("ddact", f"fav{category}")]
+        data.extend(("modifygids[]", str(ref.gid)) for ref in refs)
+        self.transport.request("POST", "/favorites.php", data=data)
+
+    def membership(self, categories: set[int]) -> dict[int, int]:
+        result = {}
+        for category in sorted(categories):
+            page = self.list_favorites(category=category, all_pages=True)
+            for item in page["items"]:
+                if item["category"] != category:
+                    raise ConflictError("Favorite list returned an unexpected category.")
+                if item["gid"] in result and result[item["gid"]] != category:
+                    raise ConflictError("Favorite moved while reading the category snapshot.")
+                result[item["gid"]] = category
+        return result
 
     def get_state(self, ref: GalleryRef) -> FavoriteState:
         html = self.transport.request("GET", f"/g/{ref.gid}/{ref.token}/")
