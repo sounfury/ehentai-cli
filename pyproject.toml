@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ehentai-cli"
+version = "0.1.0"
+description = "Cookie-authenticated E-Hentai / EXHentai favorites CLI for people and AI agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{name = "sounfury"}]
+dependencies = ["requests[socks]>=2.32.3,<3", "beautifulsoup4>=4.12.3,<5"]
+classifiers = ["Programming Language :: Python :: 3", "Environment :: Console", "Operating System :: OS Independent"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "ruff>=0.9", "build>=1.2"]
+
+[project.scripts]
+ehentai = "ehentai_cli.cli:main"
+
+[project.urls]
+Repository = "https://github.com/sounfury/ehentai-cli"
+Issues = "https://github.com/sounfury/ehentai-cli/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ehentai_cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

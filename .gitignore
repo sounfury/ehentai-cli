@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.coverage
+htmlcov/
+.env
+.env.*
+# Credentials and account data belong outside the repository.
+*cookie*
+*credential*
+*.sqlite*
+*.db
+local/
+reports/
+plan*.json
+result*.json
+galleries*.json
+notes*.json
